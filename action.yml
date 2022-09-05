@@ -70,7 +70,7 @@ runs:
               | gsub("\r"; "%0D")
             ) as $procedure_name_list
             | [
-              | $procedures
+              $procedures
               | .[]
               | select(.name == env.ISSUE_TITLE)
             ][0] as $procedure
