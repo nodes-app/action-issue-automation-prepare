@@ -1,20 +1,138 @@
-name: Name
-description: Description
+name: Prepare Issue Automation
+description: Prepare issue-powered automation
 branding:
   icon: activity
   color: blue
-
 inputs:
-  example:
-    description: Example Input
+  token:
+    description: GitHub Access Token
+    required: true
+  procedures:
+    description: List of procedures (JSON)
+    required: true
+  issue-number:
+    description: Issue Number from Workflow Dispatch Input
     required: false
-  
+  event-issue-number:
+    description: Issue Number from Issue Event
+    required: true
+    default: ${{ github.event.issue.number }}
+  event-issue-title:
+    description: Issue Title from Issue Event
+    required: true
+    default: ${{ github.event.issue.title }}
+  event-name:
+    description: Event Name
+    required: true
+    default: ${{ github.event_name }}
+  failure-issue-title-prefix:
+    description: Failure Issue Title Prefix
+    required: true
+    default: 'Procedure Run Failed: '
+outputs:
+  process-now: 
+    value: ${{ steps.list-open-failure-issues.outputs.has-next == 'false' && steps.select.outputs.issue-number == steps.list-queued.outputs.next }}
+    description: Indicates whether there is a procedure issue ready to process
+  issue-number: 
+    value: ${{ steps.select.outputs.issue-number }}
+    description: Issue Number
+  issue-title: 
+    value: ${{ steps.select.outputs.issue-title }}
+    description: Issue Title
+
 runs:
   using: composite
   steps:
 
-    - shell: bash
+    - name: Parse Procedures
+      if: inputs.event-name == 'issues'
+      id: parse-procedures
+      shell: bash
       env:
-        EXAMPLE: ${{ inputs.example }}
+        ISSUE_TITLE: ${{ inputs.event-issue-title }}
+        PROCEDURES: ${{ inputs.procedures }}
       run: |
-        echo 'Hello, World!'
+        eval $(
+          jq \
+            -r \
+            --null-input \
+            '
+            (
+              env.PROCEDURES
+              | fromjson
+            ) as $procedures
+            | (
+              $procedures
+              | map(.name)
+              | join("\n")
+              | gsub("%"; "%25")
+              | gsub("\n"; "%0A")
+              | gsub("\r"; "%0D")
+            ) as $procedure_name_list
+            | [
+              | $procedures
+              | .[]
+              | select(.name == env.ISSUE_TITLE)
+            ][0] as $procedure
+            | (
+                $procedure.message-waiting
+                | if . == null then "The procedure has been queued." else (
+                    gsub("%"; "%25")
+                    | gsub("\n"; "%0A")
+                    | gsub("\r"; "%0D")
+                  ) end
+              ) as $message_waiting
+            | (
+                $procedure.tasks
+                | join("\n")
+                | gsub("%"; "%25")
+                | gsub("\n"; "%0A")
+                | gsub("\r"; "%0D")
+              ) as $tasks
+            | "echo \"::set-output name=procedure-name-list::\($procedure_name_list)\"\n" +
+              "echo \"::set-output name=tasks::\($tasks)\"\n" +
+              "echo \"::set-output name=message-waiting::\($message_waiting)\""
+            '
+        )
+          
+    - name: Post Progress Comment
+      if: github.event_name == 'issues'
+      uses: nodes-app/action-progress-comment-create@v1
+      with:
+        token: ${{ inputs.token }}
+        issue-number: ${{ inputs.event-issue-number }}
+        start: false
+        tasks: ${{ steps.parse-procedures.outputs.tasks }}
+        message-waiting: ${{ steps.parse-procedures.outputs.message-waiting }}
+
+    - name: List Open Failure Issues
+      id: list-open-failure-issues
+      uses: nodes-app/action-list-issues@v1
+      with:
+        token: ${{ inputs.token }}
+        allow-suffix: true
+        titles: ${{ inputs.failure-issue-title-prefix }}
+
+    - name: List Queued Issues
+      if: steps.list-open-failure-issues.outputs.has-next == 'false'
+      id: list-queued
+      uses: nodes-app/action-list-issues@v1
+      with:
+        token: ${{ inputs.token }}
+        titles: ${{ steps.parse-procedures.outputs.procedure-name-list }}
+    
+    - name: Select Issue
+      if: steps.list-open-failure-issues.outputs.has-next == 'false'
+      id: select
+      shell: bash
+      env:
+        EVENT_NAME: ${{ inputs.event-name }}
+        EVENT_ISSUE_NUMBER: ${{ inputs.event-issue-number }}
+        ISSUE_NUMBER_INPUT: ${{ inputs.issue-number }}
+        NEXT_ISSUE_NUMBER: ${{ steps.list-queued.outputs.next }}
+        NEXT_ISSUE_TITLE: ${{ steps.list-queued.outputs.next-title }}
+      run: |
+        [ "$EVENT_NAME" = 'issues' ] && issue_number="$EVENT_ISSUE_NUMBER" || issue_number="$ISSUE_NUMBER_INPUT"
+        [ "$issue_number" = "$NEXT_ISSUE_NUMBER" ] && issue_title="$NEXT_ISSUE_TITLE"
+        echo "::set-output name=issue-number::$issue_number"
+        echo "::set-output name=issue-title::$issue_title"

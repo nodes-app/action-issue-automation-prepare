@@ -10,3 +10,15 @@ jobs:
 
       - name: Test Action
         uses: ./
+        with:
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          procedures: |
+            [
+              {
+                "name": "Example",
+                "tasks": ["Task A", "Task B", "Task C"]
+              }
+            ]
+          event-issue-number: -1
+          event-issue-title: Example
+          event-name: issues
