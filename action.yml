@@ -75,8 +75,7 @@ runs:
               | select(.name == env.ISSUE_TITLE)
             ][0] as $procedure
             | (
-                $procedure
-                | .message-waiting
+                $procedure["message-waiting"]
                 | if . == null then "The procedure has been queued." else (
                     gsub("%"; "%25")
                     | gsub("\n"; "%0A")
