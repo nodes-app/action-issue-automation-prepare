@@ -44,8 +44,39 @@ runs:
   using: composite
   steps:
 
+    - name: Check Preconditions
+      id: preconditions
+      shell: bash
+      env:
+        EVENT_NAME: ${{ inputs.event-name }}
+        EVENT_ISSUE_TITLE: ${{ inputs.event-issue-title }}
+        PROCEDURES: ${{ inputs.procedures }}
+      run: |
+        eval $(
+          jq \
+            -r \
+            --null-input \
+            '
+              env.EVENT_NAME as $event_name
+            | env.EVENT_ISSUE_TITLE as $event_issue_title
+            | (
+                env.PROCEDURES
+                | fromjson
+                | map(.name)
+              ) as $procedure_names
+            | ( 
+                $event_name == "workflow_dispatch"
+                || (
+                  $event_name == "issues"
+                  && any($procedure_name_list[]; . == $event_issue_title)
+                )
+              ) as $satisfied
+            | "echo \"::set-output name=satisfied::\($satisfied)\""
+            '
+        )
+    
     - name: Parse Procedures
-      if: inputs.event-name == 'issues'
+      if: steps.preconditions.outputs.satisfied && inputs.event-name == 'issues'
       id: parse-procedures
       shell: bash
       env:
@@ -97,7 +128,7 @@ runs:
         )
           
     - name: Post Progress Comment
-      if: github.event_name == 'issues'
+      if: steps.preconditions.outputs.satisfied && github.event_name == 'issues'
       uses: nodes-app/action-progress-comment-create@v1
       with:
         token: ${{ inputs.token }}
@@ -107,6 +138,7 @@ runs:
         message-waiting: ${{ steps.parse-procedures.outputs.message-waiting }}
 
     - name: List Open Failure Issues
+      if: steps.preconditions.outputs.satisfied
       id: list-open-failure-issues
       uses: nodes-app/action-list-issues@v1
       with:
@@ -115,7 +147,7 @@ runs:
         titles: ${{ inputs.failure-issue-title-prefix }}
 
     - name: List Queued Issues
-      if: steps.list-open-failure-issues.outputs.has-next == 'false'
+      if: steps.preconditions.outputs.satisfied && steps.list-open-failure-issues.outputs.has-next == 'false'
       id: list-queued
       uses: nodes-app/action-list-issues@v1
       with:
@@ -123,7 +155,7 @@ runs:
         titles: ${{ steps.parse-procedures.outputs.procedure-name-list }}
     
     - name: Select Issue
-      if: steps.list-open-failure-issues.outputs.has-next == 'false'
+      if: steps.preconditions.outputs.satisfied && steps.list-open-failure-issues.outputs.has-next == 'false'
       id: select
       shell: bash
       env:
