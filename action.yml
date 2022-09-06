@@ -89,10 +89,11 @@ runs:
                 | gsub("\n"; "%0A")
                 | gsub("\r"; "%0D")
               ) as $tasks
-            | "echo \"::set-output name=procedure-name-list::\($procedure_name_list)\"\n" +
-              "echo \"::set-output name=tasks::\($tasks)\"\n" +
-              "echo \"::set-output name=message-waiting::\($message_waiting)\""
-            '
+            | "echo -e \"" +
+                "::set-output name=procedure-name-list::\($procedure_name_list)\\n" +
+                "::set-output name=message-waiting::\($message_waiting)\\n" +
+                "::set-output name=tasks::\($tasks)"
+              '
         )
           
     - name: Post Progress Comment
