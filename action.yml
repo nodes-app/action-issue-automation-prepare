@@ -92,7 +92,7 @@ runs:
             | "echo -e \"" +
                 "::set-output name=procedure-name-list::\($procedure_name_list)\\n" +
                 "::set-output name=message-waiting::\($message_waiting)\\n" +
-                "::set-output name=tasks::\($tasks)"
+                "::set-output name=tasks::\($tasks)\""
               '
         )
           
