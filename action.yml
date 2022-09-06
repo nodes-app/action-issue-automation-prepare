@@ -68,7 +68,7 @@ runs:
                 $event_name == "workflow_dispatch"
                 or (
                   $event_name == "issues"
-                  and any($procedure_name_list[]; . == $event_issue_title)
+                  and any($procedure_names[]; . == $event_issue_title)
                 )
               ) as $satisfied
             | "echo \"::set-output name=satisfied::\($satisfied)\""
