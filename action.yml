@@ -65,8 +65,7 @@ runs:
                 | map(.name)
               ) as $procedure_names
             | ( 
-                $event_name == "workflow_dispatch"
-                || (
+                $event_name == "workflow_dispatch" || (
                   $event_name == "issues"
                   && any($procedure_name_list[]; . == $event_issue_title)
                 )
